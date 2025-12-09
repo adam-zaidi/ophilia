@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Color palette - vintage academia */
+  --color-parchment: #f4f1e8;
+  --color-aged-paper: #e8e3d3;
+  --color-ink: #2c2416;
+  --color-faded-ink: #5a5040;
+  --color-burgundy: #7a2828;
+  --color-library-green: #3d5a3d;
+  --color-gold: #b8924f;
+  --color-shadow: rgba(44, 36, 22, 0.1);
+  --color-overlay: rgba(44, 36, 22, 0.05);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Crimson Text', 'Baskerville', 'Georgia', serif;
+  background: var(--color-parchment);
+  color: var(--color-ink);
+  line-height: 1.6;
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 1.875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+p {
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+
+button {
+  font-family: 'Crimson Text', 'Baskerville', 'Georgia', serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+input, textarea {
+  font-family: 'Crimson Text', 'Baskerville', 'Georgia', serif;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+small {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
