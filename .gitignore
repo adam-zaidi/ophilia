@@ -28,14 +28,10 @@ dist-ssr
 *.sln
 *.sw?
 
-# setup stuff
-DEPLOYMENT.md
-SETUP.md
-FIX_WARNINGS.md
-DEPLOYMENT_SETUP.md
-VERCEL_ENV_SETUP.md
-DNS_SETUP.md
-DNS_TROUBLESHOOTING.md
-HOVER_DNS_SETUP.md
+# Documentation files (ignore all .md except README.md)
+*.md
+!README.md
+
+# SQL files
 supabase-schema.sql
 supabase-fix-warnings.sql
