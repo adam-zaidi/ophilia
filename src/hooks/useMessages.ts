@@ -27,7 +27,6 @@ export interface Message {
 export function useMessages() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isPolling, setIsPolling] = useState(false);
 
   useEffect(() => {
     fetchConversations(true);
@@ -35,8 +34,7 @@ export function useMessages() {
     // Use polling instead of real-time subscriptions (for free tier)
     // Poll every 5 seconds for new messages (less frequent to reduce interruptions)
     const pollInterval = setInterval(() => {
-      setIsPolling(true);
-      fetchConversations(false).finally(() => setIsPolling(false));
+      fetchConversations(false);
     }, 5000);
 
     return () => {
@@ -258,13 +256,12 @@ export function useMessages() {
 
       // Mark all unread messages in this conversation as read in the database
       // Only mark messages that were sent by others (not by the current user)
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('messages')
         .update({ read: true })
         .eq('conversation_id', conversationId)
         .eq('read', false)
-        .neq('sender_id', user.id)
-        .select();
+        .neq('sender_id', user.id);
 
       if (error) {
         console.error('Error updating messages:', error);
