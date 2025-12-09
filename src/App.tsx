@@ -4,6 +4,7 @@ import { ComposeMessage } from './components/ComposeMessage';
 import { Header } from './components/Header';
 import { AuthModal } from './components/AuthModal';
 import { ResetPassword } from './components/ResetPassword';
+import { NewMessageNotification } from './components/NewMessageNotification';
 import { useAuth } from './hooks/useAuth';
 import { supabase } from './lib/supabase';
 
@@ -42,6 +43,8 @@ export default function App() {
 
   const [activeView, setActiveView] = useState<'browse' | 'compose'>('browse');
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [newMessageNotification, setNewMessageNotification] = useState<{ senderName: string } | null>(null);
+  const [messageBoardRef, setMessageBoardRef] = useState<{ switchToMessages: () => void } | null>(null);
   const { user, profile, loading, signOut, isAuthenticated } = useAuth();
 
   const handleAuth = () => {
@@ -88,6 +91,8 @@ export default function App() {
                 <MessageBoard 
                   isAuthenticated={isAuthenticated}
                   onLoginRequired={() => setShowAuthModal(true)}
+                  onNewMessage={(senderName) => setNewMessageNotification({ senderName })}
+                  onRefReady={setMessageBoardRef}
                 />
               ) : (
                 <ComposeMessage onSubmit={() => setActiveView('browse')} />
@@ -103,6 +108,20 @@ export default function App() {
       {/* Auth Modal */}
       {showAuthModal && (
         <AuthModal onAuth={handleAuth} onClose={() => setShowAuthModal(false)} />
+      )}
+
+      {/* New Message Notification */}
+      {newMessageNotification && (
+        <NewMessageNotification
+          senderName={newMessageNotification.senderName}
+          onViewMessages={() => {
+            setNewMessageNotification(null);
+            if (messageBoardRef) {
+              messageBoardRef.switchToMessages();
+            }
+          }}
+          onDismiss={() => setNewMessageNotification(null)}
+        />
       )}
     </div>
   );

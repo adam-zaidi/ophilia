@@ -27,33 +27,34 @@ export interface Message {
 export function useMessages() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isPolling, setIsPolling] = useState(false);
 
   useEffect(() => {
-    fetchConversations();
+    fetchConversations(true);
     
-    // Subscribe to real-time updates
-    const channel = supabase
-      .channel('messages-changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'messages' },
-        () => {
-          fetchConversations();
-        }
-      )
-      .subscribe();
+    // Use polling instead of real-time subscriptions (for free tier)
+    // Poll every 5 seconds for new messages (less frequent to reduce interruptions)
+    const pollInterval = setInterval(() => {
+      setIsPolling(true);
+      fetchConversations(false).finally(() => setIsPolling(false));
+    }, 5000);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, []);
 
-  const fetchConversations = async () => {
+  const fetchConversations = async (isInitialLoad = false) => {
     try {
-      setLoading(true);
+      if (isInitialLoad) {
+        setLoading(true);
+      }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setConversations([]);
-        setLoading(false);
+        if (isInitialLoad) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -127,11 +128,39 @@ export function useMessages() {
         })
       );
 
-      setConversations(conversationsWithMessages);
+      // Only update if there are actual changes to avoid unnecessary re-renders
+      setConversations(prevConversations => {
+        // Check if conversations actually changed
+        if (prevConversations.length === 0 && conversationsWithMessages.length > 0) {
+          return conversationsWithMessages;
+        }
+        
+        // Compare by checking if any conversation has new messages or changed unread status
+        const hasChanges = conversationsWithMessages.some(newConv => {
+          const oldConv = prevConversations.find(c => c.id === newConv.id);
+          if (!oldConv) return true; // New conversation
+          
+          // Check if message count changed
+          if (newConv.messages.length !== oldConv.messages.length) return true;
+          
+          // Check if unread status changed
+          if (newConv.unread !== oldConv.unread) return true;
+          
+          // Check if last message timestamp changed
+          if (newConv.timestamp !== oldConv.timestamp) return true;
+          
+          return false;
+        });
+        
+        // Only update if there are changes (prevents unnecessary re-renders)
+        return hasChanges ? conversationsWithMessages : prevConversations;
+      });
     } catch (error) {
       console.error('Error fetching conversations:', error);
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
   };
 
@@ -190,10 +219,67 @@ export function useMessages() {
         .update({ updated_at: new Date().toISOString() })
         .eq('id', conversationId);
 
-      fetchConversations();
+      fetchConversations(false);
     } catch (error) {
       console.error('Error sending message:', error);
       throw error;
+    }
+  };
+
+  const markConversationAsRead = async (conversationId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Immediately update the local state optimistically
+      // This prevents the red dot from reappearing when switching tabs
+      setConversations(prevConversations => 
+        prevConversations.map(conv => {
+          if (conv.id === conversationId) {
+            // Update messages to mark them as read
+            const updatedMessages = conv.messages.map(msg => 
+              msg.sender_id !== user.id && !msg.read 
+                ? { ...msg, read: true }
+                : msg
+            );
+            // Recalculate unread status
+            const unreadCount = updatedMessages.filter(
+              m => m.sender_id !== user.id && !m.read
+            ).length;
+            return {
+              ...conv,
+              messages: updatedMessages,
+              unread: unreadCount > 0,
+            };
+          }
+          return conv;
+        })
+      );
+
+      // Mark all unread messages in this conversation as read in the database
+      // Only mark messages that were sent by others (not by the current user)
+      const { data, error } = await supabase
+        .from('messages')
+        .update({ read: true })
+        .eq('conversation_id', conversationId)
+        .eq('read', false)
+        .neq('sender_id', user.id)
+        .select();
+
+      if (error) {
+        console.error('Error updating messages:', error);
+        // Revert optimistic update on error
+        fetchConversations(false);
+        throw error;
+      }
+
+      // Small delay before refetch to ensure database consistency
+      // The optimistic update already shows the correct state
+      setTimeout(() => {
+        fetchConversations(false);
+      }, 500);
+    } catch (error) {
+      console.error('Error marking conversation as read:', error);
     }
   };
 
@@ -202,7 +288,8 @@ export function useMessages() {
     loading,
     getOrCreateConversation,
     sendMessage,
-    refetch: fetchConversations,
+    markConversationAsRead,
+    refetch: () => fetchConversations(false),
   };
 }
 

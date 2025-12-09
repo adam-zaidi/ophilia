@@ -25,7 +25,7 @@ interface DirectMessagesProps {
 }
 
 export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChange, openConversationWith, onConversationClosed, respondingToPost }: DirectMessagesProps) {
-  const { conversations, loading, getOrCreateConversation, sendMessage, refetch } = useMessages();
+  const { conversations, loading, getOrCreateConversation, sendMessage, markConversationAsRead, refetch } = useMessages();
   const { user, profile } = useAuth();
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
@@ -37,6 +37,10 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
       const conversation = conversations.find(c => c.participant === openConversationWith);
       if (conversation) {
         setSelectedConversation(conversation);
+        // Mark as read when opening
+        if (conversation.unread) {
+          markConversationAsRead(conversation.id);
+        }
       } else if (user && profile) {
         // Create a new conversation if it doesn't exist
         findUserAndCreateConversation(openConversationWith);
@@ -53,16 +57,8 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
     if (selectedConversation && conversations.length > 0) {
       const updatedConv = conversations.find(c => c.id === selectedConversation.id);
       if (updatedConv) {
-        // Only update if messages actually changed (to avoid unnecessary re-renders)
-        // This ensures we get the latest messages after refetch
-        const currentMessageIds = new Set(selectedConversation.messages.map(m => m.id));
-        const updatedMessageIds = new Set(updatedConv.messages.map(m => m.id));
-        const hasNewMessages = updatedConv.messages.length > selectedConversation.messages.length ||
-          Array.from(updatedMessageIds).some(id => !currentMessageIds.has(id));
-        
-        if (hasNewMessages || updatedConv.messages.length !== selectedConversation.messages.length) {
-          setSelectedConversation(updatedConv);
-        }
+        // Always update to get the latest unread status
+        setSelectedConversation(updatedConv);
       } else {
         // If conversation not found, it might have been deleted or there's an issue
         // Don't clear it automatically - let user navigate away manually
@@ -235,8 +231,8 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
           {selectedConversation.messages.map((message) => (
             <div
               key={message.id}
-              className={`bg-[var(--color-aged-paper)] border border-[var(--color-ink)] p-1.5 ${
-                message.sender_id === user?.id ? 'ml-4' : 'mr-4'
+              className={`bg-[var(--color-aged-paper)] border border-[var(--color-ink)] p-1.5 w-fit max-w-[60%] break-words ${
+                message.sender_id === user?.id ? 'ml-auto' : 'mr-auto'
               }`}
             >
               <div className="flex items-center justify-between mb-0.5">
@@ -247,7 +243,7 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
                   {formatTimestamp(message.created_at)}
                 </time>
               </div>
-              <p className="text-sm text-[var(--color-ink)]">
+              <p className="text-sm text-[var(--color-ink)] break-words">
                 {message.content}
               </p>
             </div>
@@ -260,6 +256,16 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
             <textarea
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
+              onKeyDown={(e) => {
+                // Send message on Enter (without Shift)
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (messageText.trim() && !sending && selectedConversation) {
+                    handleSendMessage(e as any);
+                  }
+                }
+                // Shift+Enter allows new line (default behavior)
+              }}
               placeholder="Type your message..."
               className="flex-1 min-h-[60px] p-1.5 bg-[var(--color-parchment)] border border-[var(--color-faded-ink)] focus:border-[var(--color-ink)] focus:outline-none resize-none text-sm"
               required
@@ -286,15 +292,21 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
           </p>
         </div>
       ) : (
-        <div className="space-y-0.5">
-          {conversations.map((conversation) => (
-            <button
-              key={conversation.id}
-              onClick={() => setSelectedConversation(conversation)}
-              className={`w-full text-left bg-[var(--color-aged-paper)] border border-[var(--color-ink)] p-1.5 hover:bg-[var(--color-overlay)] transition-colors ${
-                conversation.unread ? 'border-[var(--color-burgundy)]' : ''
-              }`}
-            >
+            <div className="space-y-0.5">
+              {conversations.map((conversation) => (
+                <button
+                  key={conversation.id}
+                  onClick={() => {
+                    setSelectedConversation(conversation);
+                    // Mark as read when opening
+                    if (conversation.unread) {
+                      markConversationAsRead(conversation.id);
+                    }
+                  }}
+                  className={`w-full text-left bg-[var(--color-aged-paper)] border border-[var(--color-ink)] p-1.5 hover:bg-[var(--color-overlay)] transition-colors ${
+                    conversation.unread ? 'border-[var(--color-burgundy)]' : ''
+                  }`}
+                >
               <div className="flex items-start justify-between mb-0.5">
                 <span className="text-xs text-[var(--color-ink)] font-medium">
                   {conversation.participant}

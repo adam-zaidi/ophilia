@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Mail, Lock, BookOpen, AlertCircle, CheckCircle, X, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { containsProfanity } from '../utils/profanityFilter';
 
 interface AuthModalProps {
   onAuth: () => void;
@@ -27,14 +28,32 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
     setError('');
     setLoading(true);
 
-    if (!validateEmail(email)) {
-      setError('Please use a valid @uchicago.edu email address');
-      setLoading(false);
-      return;
-    }
+        if (!validateEmail(email)) {
+          setError('Please use a valid @uchicago.edu email address');
+          setLoading(false);
+          return;
+        }
 
     try {
       if (mode === 'signup') {
+        // Check if email already exists (case-insensitive)
+        const { data: existingProfiles, error: emailCheckError } = await supabase
+          .from('profiles')
+          .select('email');
+        
+        // Check case-insensitively
+        const emailLower = email.trim().toLowerCase();
+        const existingProfile = existingProfiles?.find(p => p.email.toLowerCase() === emailLower);
+        
+        if (existingProfile) {
+          setError('This email is already registered. Please use a different email or try logging in.');
+          setLoading(false);
+          return;
+        }
+
+        if (emailCheckError && emailCheckError.code !== 'PGRST116') {
+          console.error('Error checking email:', emailCheckError);
+        }
         if (!username.trim()) {
           setError('Please enter a username');
           setLoading(false);
@@ -52,6 +71,14 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
           setLoading(false);
           return;
         }
+        
+        // Check for profanity
+        if (containsProfanity(username)) {
+          setError('Username contains inappropriate language. Please choose a different username.');
+          setLoading(false);
+          return;
+        }
+        
         if (password.length < 8) {
           setError('Password must be at least 8 characters');
           setLoading(false);
@@ -63,12 +90,14 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
           return;
         }
 
-        // Check if username already exists
-        const { data: existingUser, error: checkError } = await supabase
+        // Check if username already exists (case-insensitive)
+        const { data: existingUsers, error: checkError } = await supabase
           .from('profiles')
-          .select('username')
-          .eq('username', username.trim())
-          .single();
+          .select('username');
+        
+        // Check case-insensitively in JavaScript since Supabase doesn't support case-insensitive queries directly
+        const usernameLower = username.trim().toLowerCase();
+        const existingUser = existingUsers?.find(u => u.username.toLowerCase() === usernameLower);
 
         if (existingUser) {
           setError('This username is already taken. Please choose another.');
@@ -94,7 +123,12 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
         });
 
         if (signUpError) {
-          setError(signUpError.message);
+          // Check if it's a duplicate email error
+          if (signUpError.message.includes('email') && (signUpError.message.includes('already') || signUpError.message.includes('exists') || signUpError.message.includes('registered'))) {
+            setError('This email is already registered. Please use a different email or try logging in.');
+          } else {
+            setError(signUpError.message);
+          }
           setLoading(false);
           return;
         }

@@ -8,15 +8,18 @@ import { useMessages } from '../hooks/useMessages';
 interface MessageBoardProps {
   isAuthenticated: boolean;
   onLoginRequired: () => void;
+  onNewMessage?: (senderName: string) => void;
+  onRefReady?: (ref: { switchToMessages: () => void }) => void;
 }
 
-export function MessageBoard({ isAuthenticated, onLoginRequired }: MessageBoardProps) {
+export function MessageBoard({ isAuthenticated, onLoginRequired, onNewMessage, onRefReady }: MessageBoardProps) {
   const [activeTab, setActiveTab] = useState<'feed' | 'messages'>('feed');
   const [filter, setFilter] = useState<'all' | 'seeking' | 'missed' | 'inquiry'>('all');
   const { posts, loading: postsLoading } = usePosts(filter);
   const { conversations } = useMessages();
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [openConversationWith, setOpenConversationWith] = useState<string | null>(null);
+  const [previousUnreadCount, setPreviousUnreadCount] = useState(0);
   const [respondingToPost, setRespondingToPost] = useState<{ author: string; content: string; catalogNumber: string } | null>(null);
 
   // Format posts for MessageCard component
@@ -47,6 +50,21 @@ export function MessageBoard({ isAuthenticated, onLoginRequired }: MessageBoardP
     }
   };
 
+  // Expose method to switch to messages tab (for notification)
+  useEffect(() => {
+    if (onRefReady) {
+      onRefReady({
+        switchToMessages: () => {
+          if (isAuthenticated) {
+            setActiveTab('messages');
+          } else {
+            onLoginRequired();
+          }
+        }
+      });
+    }
+  }, [onRefReady, isAuthenticated]);
+
   const handleRespondToPost = (author: string, postContent: string, catalogNumber: string) => {
     setActiveTab('messages');
     setOpenConversationWith(author);
@@ -56,11 +74,31 @@ export function MessageBoard({ isAuthenticated, onLoginRequired }: MessageBoardP
   // Update unread status when authentication or conversations change
   useEffect(() => {
     if (isAuthenticated) {
-      setHasUnreadMessages(conversations.some((c: { unread: boolean }) => c.unread));
+      const unreadConversations = conversations.filter((c: { unread: boolean }) => c.unread);
+      const currentUnreadCount = unreadConversations.length;
+      setHasUnreadMessages(currentUnreadCount > 0);
+      
+      // Check if we have new unread messages (count increased)
+      // Only notify if user is not currently viewing messages
+      if (currentUnreadCount > previousUnreadCount && activeTab !== 'messages' && onNewMessage && previousUnreadCount >= 0) {
+        // Get the most recent unread conversation
+        const newestUnread = unreadConversations.sort((a: any, b: any) => 
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        )[0];
+        
+        if (newestUnread) {
+          onNewMessage(newestUnread.participant);
+        }
+      }
+      
+      // Update previous count after checking for new messages
+      setPreviousUnreadCount(currentUnreadCount);
     } else {
       setHasUnreadMessages(false);
+      setPreviousUnreadCount(0);
     }
-  }, [isAuthenticated, conversations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, conversations, activeTab]);
 
   return (
     <div>
