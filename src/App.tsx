@@ -3,9 +3,43 @@ import { MessageBoard } from './components/MessageBoard';
 import { ComposeMessage } from './components/ComposeMessage';
 import { Header } from './components/Header';
 import { AuthModal } from './components/AuthModal';
+import { ResetPassword } from './components/ResetPassword';
 import { useAuth } from './hooks/useAuth';
+import { supabase } from './lib/supabase';
 
 export default function App() {
+  // Check for recovery mode IMMEDIATELY, before any hooks run
+  // Supabase sends recovery tokens in URL hash, not query params
+  // Check both hash and query params to be safe
+  let isRecoveryMode = false;
+  if (typeof window !== 'undefined') {
+    // Check URL hash (Supabase uses this)
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const hashType = hashParams.get('type');
+    const hashToken = hashParams.get('access_token');
+    
+    // Also check query params (in case redirect uses query)
+    const queryParams = new URLSearchParams(window.location.search);
+    const queryType = queryParams.get('type');
+    const queryToken = queryParams.get('access_token');
+    
+    isRecoveryMode = (hashType === 'recovery' && !!hashToken) || (queryType === 'recovery' && !!queryToken);
+  }
+  
+  // If in recovery mode, show reset password page immediately (before auth state is processed)
+  if (isRecoveryMode) {
+    return (
+      <ResetPassword 
+        onComplete={() => {
+          // Sign out after password reset and redirect to home
+          supabase.auth.signOut().then(() => {
+            window.location.href = '/';
+          });
+        }} 
+      />
+    );
+  }
+
   const [activeView, setActiveView] = useState<'browse' | 'compose'>('browse');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const { user, profile, loading, signOut, isAuthenticated } = useAuth();
@@ -26,6 +60,7 @@ export default function App() {
       setActiveView('compose');
     }
   };
+
 
   return (
     <div className="min-h-screen bg-[var(--color-parchment)] relative overflow-hidden">

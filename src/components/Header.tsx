@@ -28,6 +28,7 @@ export function Header({ activeView, onComposeClick, isAuthenticated, userEmail,
               Ophilia
             </h1>
             <p className="text-[var(--color-faded-ink)] italic text-lg">
+              
               Anonymous Connexions & Encounters
             </p>
           </div>

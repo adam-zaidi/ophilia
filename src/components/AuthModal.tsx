@@ -8,13 +8,14 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ onAuth, onClose }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [verificationSent, setVerificationSent] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const validateEmail = (email: string): boolean => {
@@ -118,7 +119,7 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
 
         setVerificationSent(true);
         setLoading(false);
-      } else {
+      } else if (mode === 'login') {
         // Login with Supabase
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -134,6 +135,20 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
         // Success - auth state will be updated via useAuth hook
         onAuth();
         onClose();
+      } else if (mode === 'forgot') {
+        // Send password reset email
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        });
+
+        if (resetError) {
+          setError(resetError.message);
+          setLoading(false);
+          return;
+        }
+
+        setResetEmailSent(true);
+        setLoading(false);
       }
     } catch (err) {
       setError('An unexpected error occurred');
@@ -165,6 +180,41 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
               className="mt-4 text-xs text-[var(--color-faded-ink)] hover:text-[var(--color-ink)] hover:underline"
             >
               Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (resetEmailSent) {
+    return (
+      <div className="fixed inset-0 bg-[var(--color-ink)] bg-opacity-60 flex items-center justify-center p-4 z-50">
+        <div className="max-w-md w-full bg-[var(--color-aged-paper)] border-2 border-[var(--color-ink)] p-8 shadow-[8px_8px_0px_0px_rgba(44,36,22,0.4)] relative">
+          <div className="absolute top-3 right-3 w-12 h-12 border-t-2 border-r-2 border-[var(--color-gold)] opacity-40" />
+          <div className="absolute bottom-3 left-3 w-12 h-12 border-b-2 border-l-2 border-[var(--color-gold)] opacity-40" />
+          
+          <div className="text-center">
+            <CheckCircle className="w-16 h-16 text-[var(--color-library-green)] mx-auto mb-4" />
+            <h2 className="text-[var(--color-ink)] mb-4">Reset Link Sent</h2>
+            <p className="text-[var(--color-faded-ink)] mb-2">
+              A password reset link has been sent to:
+            </p>
+            <p className="text-[var(--color-burgundy)] mb-6">{email}</p>
+            <div className="p-4 border border-[var(--color-faded-ink)] bg-[var(--color-overlay)]">
+              <p className="text-sm text-[var(--color-faded-ink)]">
+                Please check your inbox and click the reset link to set a new password.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setResetEmailSent(false);
+                setMode('login');
+                setEmail('');
+              }}
+              className="mt-4 text-xs text-[var(--color-faded-ink)] hover:text-[var(--color-ink)] hover:underline"
+            >
+              Back to Login
             </button>
           </div>
         </div>
@@ -283,23 +333,25 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
               </div>
             )}
 
-            {/* Password Field */}
-            <div>
-              <label className="block mb-0.5 text-[var(--color-ink)] text-xs tracking-wide uppercase">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-faded-ink)]" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full pl-9 pr-2.5 py-1.5 text-sm bg-[var(--color-parchment)] border-2 border-[var(--color-faded-ink)] focus:border-[var(--color-ink)] focus:outline-none"
-                  required
-                />
+            {/* Password Field (Login and Signup only) */}
+            {mode !== 'forgot' && (
+              <div>
+                <label className="block mb-0.5 text-[var(--color-ink)] text-xs tracking-wide uppercase">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-faded-ink)]" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="w-full pl-9 pr-2.5 py-1.5 text-sm bg-[var(--color-parchment)] border-2 border-[var(--color-faded-ink)] focus:border-[var(--color-ink)] focus:outline-none"
+                    required
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Confirm Password (Sign Up Only) */}
             {mode === 'signup' && (
@@ -338,13 +390,53 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
               </div>
             )}
 
+            {/* Forgot Password Link (Login mode only) */}
+            {mode === 'login' && (
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('forgot');
+                    setError('');
+                    setPassword('');
+                  }}
+                  className="text-xs text-[var(--color-faded-ink)] hover:text-[var(--color-ink)] hover:underline"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
+            {/* Back to Login (Forgot mode) */}
+            {mode === 'forgot' && (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setError('');
+                    setEmail('');
+                  }}
+                  className="text-xs text-[var(--color-faded-ink)] hover:text-[var(--color-ink)] hover:underline"
+                >
+                  ← Back to Login
+                </button>
+              </div>
+            )}
+
             {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
               className="w-full py-1.5 border-2 border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-parchment)] hover:bg-[var(--color-burgundy)] hover:border-[var(--color-burgundy)] transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Processing...' : mode === 'login' ? 'Enter the Archives' : 'Create Account'}
+              {loading 
+                ? 'Processing...' 
+                : mode === 'login' 
+                  ? 'Enter the Archives' 
+                  : mode === 'signup'
+                    ? 'Create Account'
+                    : 'Send Reset Link'}
             </button>
           </form>
         </div>
