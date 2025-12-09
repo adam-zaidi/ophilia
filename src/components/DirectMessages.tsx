@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useMessages, Conversation, Message } from '../hooks/useMessages';
+import { useMessages, Conversation } from '../hooks/useMessages';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
 
 // Helper to format timestamp
 const formatTimestamp = (dateString: string) => {
@@ -23,9 +24,11 @@ interface DirectMessagesProps {
 }
 
 export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChange, openConversationWith, onConversationClosed }: DirectMessagesProps) {
-  const [conversations] = useState<Conversation[]>(mockConversations);
+  const { conversations, loading, getOrCreateConversation, sendMessage, refetch } = useMessages();
+  const { user, profile } = useAuth();
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
+  const [sending, setSending] = useState(false);
   
   // Open conversation when openConversationWith changes
   useEffect(() => {
@@ -34,33 +37,14 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
       if (conversation) {
         setSelectedConversation(conversation);
       } else {
-        // Find user by username and create conversation
+        // Create a new conversation if it doesn't exist
         findUserAndCreateConversation(openConversationWith);
       }
+    } else if (!openConversationWith) {
+      setSelectedConversation(null); // Close conversation if openConversationWith is null
     }
-  }, [openConversationWith, conversations]);
+  }, [openConversationWith, conversations, user?.id]);
 
-  const findUserAndCreateConversation = async (username: string) => {
-    try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('username', username)
-        .single();
-
-      if (profile) {
-        const conversationId = await getOrCreateConversation(profile.user_id);
-        await refetch();
-        const newConv = conversations.find(c => c.id === conversationId);
-        if (newConv) {
-          setSelectedConversation(newConv);
-        }
-      }
-    } catch (error) {
-      console.error('Error finding user:', error);
-    }
-  };
-  
   // Calculate unread count and notify parent
   const hasUnread = conversations.some(c => c.unread);
   
@@ -69,6 +53,41 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
       onUnreadChange(hasUnread);
     }
   }, [hasUnread, onUnreadChange]);
+
+  // Function to find user and create conversation
+  const findUserAndCreateConversation = async (usernameToFind: string) => {
+    if (!user || !profile) {
+      onLoginRequired();
+      return;
+    }
+    if (usernameToFind === profile.username) {
+      // Cannot message self
+      console.warn("Cannot open conversation with self.");
+      return;
+    }
+
+    const { data: targetProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('username', usernameToFind)
+      .single();
+
+    if (profileError || !targetProfile) {
+      console.error('Error finding user or user not found:', profileError?.message);
+      return;
+    }
+
+    try {
+      const conversationId = await getOrCreateConversation(targetProfile.user_id);
+      await refetch();
+      const newConv = conversations.find(c => c.id === conversationId);
+      if (newConv) {
+        setSelectedConversation(newConv);
+      }
+    } catch (err) {
+      console.error('Error creating conversation:', err);
+    }
+  };
 
   if (!isAuthenticated) {
     return (
@@ -102,6 +121,14 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
     }
   };
 
+  if (loading) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-xs text-[var(--color-faded-ink)] italic">Loading messages...</p>
+      </div>
+    );
+  }
+
   if (selectedConversation) {
     return (
       <div className="flex flex-col h-[calc(100vh-200px)]">
@@ -127,11 +154,16 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-0.5 mb-2">
+          {selectedConversation.messages.length === 0 && (
+            <div className="text-center py-4 text-[var(--color-faded-ink)] italic text-xs">
+              No messages yet. Start the conversation!
+            </div>
+          )}
           {selectedConversation.messages.map((message) => (
             <div
               key={message.id}
               className={`bg-[var(--color-aged-paper)] border border-[var(--color-ink)] p-1.5 ${
-                message.from === 'You' ? 'ml-4' : 'mr-4'
+                message.sender_id === user?.id ? 'ml-4' : 'mr-4'
               }`}
             >
               <div className="flex items-center justify-between mb-0.5">
@@ -168,14 +200,6 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
             </button>
           </div>
         </form>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="text-center py-16">
-        <p className="text-xs text-[var(--color-faded-ink)] italic">Loading...</p>
       </div>
     );
   }
@@ -219,4 +243,3 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
     </div>
   );
 }
-
