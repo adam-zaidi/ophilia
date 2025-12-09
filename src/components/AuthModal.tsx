@@ -44,6 +44,13 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
           setLoading(false);
           return;
         }
+        // Validate username format: only letters, numbers, dots, underscores, and hyphens
+        const usernameRegex = /^[a-zA-Z0-9._-]+$/;
+        if (!usernameRegex.test(username)) {
+          setError('Username can only contain letters, numbers, dots (.), underscores (_), and hyphens (-)');
+          setLoading(false);
+          return;
+        }
         if (password.length < 8) {
           setError('Password must be at least 8 characters');
           setLoading(false);
