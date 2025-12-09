@@ -54,6 +54,24 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
           setLoading(false);
           return;
         }
+
+        // Check if username already exists
+        const { data: existingUser, error: checkError } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('username', username.trim())
+          .single();
+
+        if (existingUser) {
+          setError('This username is already taken. Please choose another.');
+          setLoading(false);
+          return;
+        }
+
+        // If checkError is not "no rows found", it's a real error
+        if (checkError && checkError.code !== 'PGRST116') {
+          console.error('Error checking username:', checkError);
+        }
         
         // Sign up with Supabase
         const { data, error: signUpError } = await supabase.auth.signUp({
@@ -61,7 +79,7 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
           password,
           options: {
             data: {
-              username: username,
+              username: username.trim(),
             },
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
@@ -73,14 +91,20 @@ export function AuthModal({ onAuth, onClose }: AuthModalProps) {
           return;
         }
 
-        // Update profile with username
+        // Update profile with username (if profile was created by trigger)
         if (data.user) {
           const { error: profileError } = await supabase
             .from('profiles')
-            .update({ username })
+            .update({ username: username.trim() })
             .eq('user_id', data.user.id);
 
           if (profileError) {
+            // Check if it's a duplicate username error
+            if (profileError.code === '23505' || profileError.message.includes('unique') || profileError.message.includes('duplicate')) {
+              setError('This username is already taken. Please choose another.');
+              setLoading(false);
+              return;
+            }
             console.error('Error updating profile:', profileError);
           }
         }

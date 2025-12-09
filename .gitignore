@@ -32,5 +32,10 @@ dist-ssr
 DEPLOYMENT.md
 SETUP.md
 FIX_WARNINGS.md
+DEPLOYMENT_SETUP.md
+VERCEL_ENV_SETUP.md
+DNS_SETUP.md
+DNS_TROUBLESHOOTING.md
+HOVER_DNS_SETUP.md
 supabase-schema.sql
 supabase-fix-warnings.sql
