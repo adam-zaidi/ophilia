@@ -11,11 +11,11 @@ interface Message {
 }
 
 interface MessageCardProps {
-  message: Message;
-  isAuthenticated: boolean;
-  onLoginRequired: () => void;
-  onRespond?: (author: string) => void;
-}
+      message: Message;
+      isAuthenticated: boolean;
+      onLoginRequired: () => void;
+      onRespond?: (author: string, content: string, catalogNumber: string) => void;
+    }
 
 export function MessageCard({ message, isAuthenticated, onLoginRequired, onRespond }: MessageCardProps) {
   const categoryLabels = {
@@ -28,7 +28,7 @@ export function MessageCard({ message, isAuthenticated, onLoginRequired, onRespo
     if (!isAuthenticated) {
       onLoginRequired();
     } else if (onRespond) {
-      onRespond(message.author);
+      onRespond(message.author, message.content, message.catalogNumber);
     }
   };
 

@@ -17,6 +17,7 @@ export function MessageBoard({ isAuthenticated, onLoginRequired }: MessageBoardP
   const { conversations } = useMessages();
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [openConversationWith, setOpenConversationWith] = useState<string | null>(null);
+  const [respondingToPost, setRespondingToPost] = useState<{ author: string; content: string; catalogNumber: string } | null>(null);
 
   // Format posts for MessageCard component
   const formattedMessages = posts.map((post: Post) => ({
@@ -46,9 +47,10 @@ export function MessageBoard({ isAuthenticated, onLoginRequired }: MessageBoardP
     }
   };
 
-  const handleRespondToPost = (author: string) => {
+  const handleRespondToPost = (author: string, postContent: string, catalogNumber: string) => {
     setActiveTab('messages');
     setOpenConversationWith(author);
+    setRespondingToPost({ author, content: postContent, catalogNumber });
   };
 
   // Update unread status when authentication or conversations change
@@ -171,15 +173,19 @@ export function MessageBoard({ isAuthenticated, onLoginRequired }: MessageBoardP
             </div>
           )}
         </>
-      ) : (
-        <DirectMessages 
-          isAuthenticated={isAuthenticated}
-          onLoginRequired={onLoginRequired}
-          onUnreadChange={setHasUnreadMessages}
-          openConversationWith={openConversationWith}
-          onConversationClosed={() => setOpenConversationWith(null)}
-        />
-      )}
+          ) : (
+            <DirectMessages 
+              isAuthenticated={isAuthenticated}
+              onLoginRequired={onLoginRequired}
+              onUnreadChange={setHasUnreadMessages}
+              openConversationWith={openConversationWith}
+              onConversationClosed={() => {
+                setOpenConversationWith(null);
+                setRespondingToPost(null);
+              }}
+              respondingToPost={respondingToPost}
+            />
+          )}
     </div>
   );
 }

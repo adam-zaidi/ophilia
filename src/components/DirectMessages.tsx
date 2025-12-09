@@ -21,9 +21,10 @@ interface DirectMessagesProps {
   onUnreadChange?: (hasUnread: boolean) => void;
   openConversationWith?: string | null;
   onConversationClosed?: () => void;
+  respondingToPost?: { author: string; content: string; catalogNumber: string } | null;
 }
 
-export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChange, openConversationWith, onConversationClosed }: DirectMessagesProps) {
+export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChange, openConversationWith, onConversationClosed, respondingToPost }: DirectMessagesProps) {
   const { conversations, loading, getOrCreateConversation, sendMessage, refetch } = useMessages();
   const { user, profile } = useAuth();
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -32,18 +33,42 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
   
   // Open conversation when openConversationWith changes
   useEffect(() => {
-    if (openConversationWith && conversations.length > 0) {
+    if (openConversationWith && !loading) {
       const conversation = conversations.find(c => c.participant === openConversationWith);
       if (conversation) {
         setSelectedConversation(conversation);
-      } else {
+      } else if (user && profile) {
         // Create a new conversation if it doesn't exist
         findUserAndCreateConversation(openConversationWith);
       }
-    } else if (!openConversationWith) {
-      setSelectedConversation(null); // Close conversation if openConversationWith is null
+    } else if (!openConversationWith && !selectedConversation) {
+      // Only clear if we don't have a selected conversation
+      // This prevents clearing when we're just refetching
+      setSelectedConversation(null);
     }
-  }, [openConversationWith, conversations, user?.id]);
+  }, [openConversationWith, conversations, loading, user?.id]);
+
+  // Keep selected conversation updated when conversations refetch (e.g., after sending a message)
+  useEffect(() => {
+    if (selectedConversation && conversations.length > 0) {
+      const updatedConv = conversations.find(c => c.id === selectedConversation.id);
+      if (updatedConv) {
+        // Only update if messages actually changed (to avoid unnecessary re-renders)
+        // This ensures we get the latest messages after refetch
+        const currentMessageIds = new Set(selectedConversation.messages.map(m => m.id));
+        const updatedMessageIds = new Set(updatedConv.messages.map(m => m.id));
+        const hasNewMessages = updatedConv.messages.length > selectedConversation.messages.length ||
+          Array.from(updatedMessageIds).some(id => !currentMessageIds.has(id));
+        
+        if (hasNewMessages || updatedConv.messages.length !== selectedConversation.messages.length) {
+          setSelectedConversation(updatedConv);
+        }
+      } else {
+        // If conversation not found, it might have been deleted or there's an issue
+        // Don't clear it automatically - let user navigate away manually
+      }
+    }
+  }, [conversations, selectedConversation?.id]);
 
   // Calculate unread count and notify parent
   const hasUnread = conversations.some(c => c.unread);
@@ -78,12 +103,10 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
     }
 
     try {
-      const conversationId = await getOrCreateConversation(targetProfile.user_id);
+      await getOrCreateConversation(targetProfile.user_id);
+      // Refetch conversations to get the new one
       await refetch();
-      const newConv = conversations.find(c => c.id === conversationId);
-      if (newConv) {
-        setSelectedConversation(newConv);
-      }
+      // The useEffect will automatically pick up the new conversation when conversations state updates
     } catch (err) {
       console.error('Error creating conversation:', err);
     }
@@ -110,12 +133,40 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
     if (!messageText.trim() || !selectedConversation || sending) return;
     
     setSending(true);
+    const conversationId = selectedConversation.id;
+    const messageContent = messageText.trim();
+    setMessageText(''); // Clear input immediately for better UX
+    
     try {
-      await sendMessage(selectedConversation.id, messageText.trim());
-      setMessageText('');
+      // Optimistically add the message to the UI
+      const optimisticMessage = {
+        id: `temp-${Date.now()}`,
+        conversation_id: conversationId,
+        sender_id: user?.id || '',
+        content: messageContent,
+        created_at: new Date().toISOString(),
+        read: false,
+        from: 'You',
+      };
+      
+      const optimisticConversation = {
+        ...selectedConversation,
+        messages: [...selectedConversation.messages, optimisticMessage],
+      };
+      setSelectedConversation(optimisticConversation);
+      
+      // Send the message
+      await sendMessage(conversationId, messageContent);
+      
+      // Refetch to get the real message with proper ID and timestamp
       await refetch();
+      
+      // The useEffect will update the conversation with the real data
     } catch (error) {
       console.error('Error sending message:', error);
+      // Revert optimistic update on error
+      setSelectedConversation(selectedConversation);
+      setMessageText(messageContent); // Restore message text
     } finally {
       setSending(false);
     }
@@ -130,6 +181,11 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
   }
 
   if (selectedConversation) {
+    // Check if this is a new conversation started from a post response
+    const isNewConversationFromPost = respondingToPost && 
+      respondingToPost.author === selectedConversation.participant && 
+      selectedConversation.messages.length === 0;
+
     return (
       <div className="flex flex-col h-[calc(100vh-200px)]">
         {/* Conversation header */}
@@ -151,6 +207,23 @@ export function DirectMessages({ isAuthenticated, onLoginRequired, onUnreadChang
             </span>
           </div>
         </div>
+
+        {/* Show post content if responding to a post */}
+        {isNewConversationFromPost && respondingToPost && (
+          <div className="mb-2 bg-[var(--color-parchment)] border border-[var(--color-faded-ink)] p-2">
+            <div className="mb-1">
+              <span className="text-xs text-[var(--color-burgundy)] tracking-wider">
+                {respondingToPost.catalogNumber}
+              </span>
+            </div>
+            <p className="text-xs text-[var(--color-ink)] italic leading-relaxed">
+              "{respondingToPost.content}"
+            </p>
+            <p className="text-xs text-[var(--color-faded-ink)] mt-1">
+              Responding to post by {respondingToPost.author}
+            </p>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-0.5 mb-2">

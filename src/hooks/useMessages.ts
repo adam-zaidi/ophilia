@@ -81,9 +81,21 @@ export function useMessages() {
           // Get messages
           const { data: msgs } = await supabase
             .from('messages')
-            .select('*, profiles(username)')
+            .select('*')
             .eq('conversation_id', conv.id)
             .order('created_at', { ascending: true });
+
+          // Fetch profiles for all unique sender_ids
+          const senderIds = [...new Set((msgs || []).map((msg: any) => msg.sender_id))];
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('user_id, username')
+            .in('user_id', senderIds);
+
+          // Create a map of user_id to username
+          const usernameMap = new Map(
+            (profilesData || []).map((profile: any) => [profile.user_id, profile.username])
+          );
 
           const transformedMessages: Message[] = (msgs || []).map((msg: any) => ({
             id: msg.id,
@@ -92,7 +104,7 @@ export function useMessages() {
             content: msg.content,
             created_at: msg.created_at,
             read: msg.read,
-            from: msg.sender_id === user.id ? 'You' : (msg.profiles?.username || 'Unknown'),
+            from: msg.sender_id === user.id ? 'You' : (usernameMap.get(msg.sender_id) || 'Unknown'),
           }));
 
           const lastMessage = transformedMessages[transformedMessages.length - 1];
